@@ -20,10 +20,10 @@ jobs:
           go-version: '1.22'
           cache: true
 
-      - name: Install LLVM / Clang and libbpf
+      - name: Install LLVM / Clang, libbpf and multilib headers
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm libbpf-dev make
+          sudo apt-get install -y clang llvm libbpf-dev gcc-multilib make
 
       - name: Run Go Unit Tests
         run: go test -v ./...
