@@ -37,8 +37,8 @@ struct alert_event {
 // Ensure BTF type collector preserves struct alert_event for bpf2go / userspace loaders
 struct alert_event unused_alert_event __attribute__((unused));
 
-// Key definition for Longest Prefix Match (LPM) Trie IPv4 lookups
-struct bpf_lpm_trie_key {
+// Key definition for IPv4 Longest Prefix Match (LPM) Trie lookups
+struct ipv4_lpm_key {
     __u32 prefixlen;
     __u32 data; // Network byte order IPv4 address
 };
@@ -47,7 +47,7 @@ struct bpf_lpm_trie_key {
 struct {
     __uint(type, BPF_MAP_TYPE_LPM_TRIE);
     __uint(max_entries, 2048);
-    __type(key, struct bpf_lpm_trie_key);
+    __type(key, struct ipv4_lpm_key);
     __type(value, __u8);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } allowed_egress_cidrs SEC(".maps");
@@ -76,7 +76,7 @@ static __always_inline void emit_alert(__u32 saddr, __u32 daddr, __u16 sport, __
 }
 
 static __always_inline int is_ip_allowed(__u32 ip) {
-    struct bpf_lpm_trie_key key;
+    struct ipv4_lpm_key key;
     key.prefixlen = 32;
     key.data = ip;
 
