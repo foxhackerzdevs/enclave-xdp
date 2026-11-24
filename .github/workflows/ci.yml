@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Install LLVM / Clang and libbpf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libbpf-dev make
+
+      - name: Run Go Unit Tests
+        run: go test -v ./...
+
+      - name: Compile eBPF Object
+        run: make bpf
+
+      - name: Build Userspace Binary
+        run: make build
+
+      - name: Verify Binary
+        run: ./enclave-xdp -version
