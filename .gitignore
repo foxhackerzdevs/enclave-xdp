@@ -1,0 +1,14 @@
+# Binaries (root level only)
+/enclave-xdp
+/*.exe
+
+# eBPF objects
+bpf/*.o
+*.o
+
+# OS and IDE artifacts
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/

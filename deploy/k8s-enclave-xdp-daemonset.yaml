@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: enclave-xdp
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/name: enclave-xdp
+    app.kubernetes.io/component: security-guard
+    app.kubernetes.io/part-of: foxhackerz-zero-trust
+    security.foxhackerz.dev/layer: "3-fabric-guard"
+spec:
+  selector:
+    matchLabels:
+      name: enclave-xdp
+  template:
+    metadata:
+      labels:
+        name: enclave-xdp
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+        description: "Zero-copy RoCEv2 anomaly detector & pod egress guard for confidential GPU nodes"
+    spec:
+      # hostNetwork is required for XDP driver-level hook attachment to physical / bond interfaces
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+
+      # Tolerate GPU and confidential VM taints so daemon runs across all compute nodes
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "confidential-compute"
+          operator: "Exists"
+          effect: "NoSchedule"
+
+      containers:
+        - name: enclave-xdp
+          image: ghcr.io/foxhackerzdevs/enclave-xdp:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-iface=$(NODE_INTERFACE)"
+            - "-obj=/app/bpf/enclave_xdp.o"
+            - "-allow=$(ALLOWED_CIDRS)"
+            - "-metrics-addr=:9090"
+          env:
+            - name: NODE_INTERFACE
+              valueFrom:
+                configMapKeyRef:
+                  name: enclave-xdp-config
+                  key: interface
+                  optional: true
+            - name: ALLOWED_CIDRS
+              valueFrom:
+                configMapKeyRef:
+                  name: enclave-xdp-config
+                  key: allowed_cidrs
+                  optional: true
+
+          securityContext:
+            privileged: true # or capabilities: ["BPF", "NET_ADMIN", "SYS_ADMIN"]
+            readOnlyRootFilesystem: false
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "128Mi"
+
+          ports:
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9090
+            initialDelaySeconds: 2
+            periodSeconds: 10
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 15
+
+          volumeMounts:
+            - name: bpf-fs
+              mountPath: /sys/fs/bpf
+              mountPropagation: HostToContainer
+            - name: debugfs
+              mountPath: /sys/kernel/debug
+            - name: modules
+              mountPath: /lib/modules
+              readOnly: true
+
+      volumes:
+        - name: bpf-fs
+          hostPath:
+            path: /sys/fs/bpf
+            type: DirectoryOrCreate
+        - name: debugfs
+          hostPath:
+            path: /sys/kernel/debug
+            type: Directory
+        - name: modules
+          hostPath:
+            path: /lib/modules
+            type: Directory
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: enclave-xdp-config
+  namespace: kube-system
+data:
+  # Primary network interface on GPU worker nodes (e.g. eth0, enp1s0f0, bond0)
+  interface: "eth0"
+  # CIDR allowlist: Internal cluster VPCs, KMS attestation services, and authorized RoCEv2 fabric peers
+  allowed_cidrs: "127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
